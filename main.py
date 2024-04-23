@@ -142,4 +142,5 @@ def menu():
             multi_table()
         elif choice == 0:
             break
+
 menu()
