@@ -1,180 +1,271 @@
-# #Створити клас Rectangle:
-# -він має приймати дві сторони x,y
-# -описати поведінку на арифметични методи:
-#   + сумма площин двох екземплярів ксласу
-#   - різниця площин двох екземплярів ксласу
-#   == площин на рівність
-#   != площин на не рівність
-#   >, < меньше більше
-#   при виклику метода len() підраховувати сумму сторін
-from abc import ABC, abstractmethod
+import telebot
+import time
+import random
+import threading
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-class Rectangle:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+bot = telebot.TeleBot('7191661928:AAFRCRkvMSCRJbPcHmXRvMU3TtszLZtc69Y')
 
-    def area(self):
-        return self.x * self.y
-
-    def __len__(self):
-        return (self.x + self.y) * 2
-
-    def __add__(self, other):
-        return self.area() + other.area()
-
-    def __sub__(self, other):
-        return self.area() - other.area()
-
-    def __eq__(self, other):
-        return self.area() == other.area()
-
-    def __ne__(self, other):
-        return self.area() != other.area()
-
-    def __lt__(self, other):
-        return self.area() < other.area()
-
-    def __gt__(self, other):
-        return self.area() > other.area()
-
-
-rec1 = Rectangle(10, 20)
-rec2 = Rectangle(12, 22)
-
-# print(rec1.area())
-# print(rec2.area())
-# print(rec1 + rec2)
-# print(rec1 - rec2)
-# print(rec1 == rec2)
-# print(rec1 != rec2)
-# print(rec1 > rec2)
-# print(rec1 < rec2)
-# print(len(rec1))
-
-# створити класс Human (name, age)
-# створити два класси Prince и Cinderella які наслідуються від Human:
-# у попелюшки мае бути ім'я, вік, розмір нонги
-# у принца має бути ім'я, вік, та розмір знайденого черевичка, а також метод котрий буде приймати список попелюшок, та шукати ту саму
-#
-# в класі попелюшки має бути count який буде зберігати кількість створених екземплярів классу
-# також має бути метод классу який буде виводити це значення
-
-class Human:
-    def __init__(self,name,age):
-        self.name = name
-        self.age = age
-
-class Cinderella(Human):
-    counter = 0
-    def __init__(self,name,age,foot_size):
-        super().__init__(name,age)
-        self.foot_size = foot_size
-        Cinderella.counter += 1
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    @classmethod
-    def get_count(cls):
-        return cls.counter
-
-
-
-class Prince(Human):
-    def __init__(self,name,age,found_size):
-        super().__init__(name,age)
-        self.found_size = found_size
-
-    def searching(self,princess: list[Cinderella]) -> None:
-        for prince in princess:
-            if prince.foot_size == self.found_size:
-                print(prince)
-                return
-
-pr1 = Prince('Roberto',20,38)
-c1 = Cinderella('Alina',18,39)
-c2 = Cinderella('Margo',19,42)
-c3 = Cinderella('Sofia',20,38)
-
-cinderellas_list = [
-    c1,c2,c3
+locations = [
+    "Парк",
+    "Зоопарк",
+    "Караоке",
+    "Готель",
+    "Туалет",
+    "Музей",
+    "Художня галерея",
+    "Театр",
+    "Концертний зал",
+    "Спортивний стадіон",
+    "Парк розваг",
+    "Водний парк",
+    "Ботанічний сад",
+    "Акваріум",
+    "Історична пам'ятка",
+    "Релігійна споруда",
+    "Торговий центр",
+    "Ринок",
+    "Ресторан",
+    "Кафе",
+    "Бар",
+    "Нічний клуб",
+    "Бібліотека",
+    "Школа"
 ]
-pr1.searching(cinderellas_list)
-print(c1.get_count())
+
+messages = []
+
+reg_started = True
+
+again = False
+
+game_ended = False
+
+_registrations = []
+
+random_location = ''
+
+game_timer = None
+
+spy_list = []
+users = []
+players2 = []
+games = []
+
+class User():
+    def __init__(self,id,username,first_name):
+        self.id = id
+        self.username = username
+        self.first_name = first_name
+
+class Player(User):
+    def __init__(self,id,username,first_name,role,location):
+        super().__init__(id,username,first_name)
+        self.role = role
+        self.location = location
+
+class Game():
+    def __init__(self,status,reg_status):
+        self.status = status
+        self.messages = None
+        self.reg_status = reg_status
+        self.reg_list = None
+
+    def get_messages(self):
+        return self.messages
+
+    def set_messages(self,msg):
+        self.messages = msg
+
+    def set_reg_list(self,reg_list):
+        self.reg_list = reg_list
+
+    def get_reg_list(self):
+        return self.reg_list
+
+    def set_reg_status(self,reg_status):
+        self.reg_status = reg_status
+
+    def get_reg_status(self):
+        return self.reg_status
+
+game1 = Game(status=True,reg_status=True)
+
+def clearing():
+    print('clear')
+    global reg_started,players,messages,spy_list,game_ended,random_location,_registrations,again
+    players = {}
+    again = False
+    messages = []
+    spy_list = []
+    game_ended = False
+    random_location = ''
+    reg_started = True
+    _registrations = []
+
+@bot.message_handler(commands=['start'])
+def connect_the_game(message):
+    if message.chat.type == 'private':
+        if 'join_game' in message.text.lower():
+            if message.from_user.id not in [player.id for player in players2] and not again:
+                user_id = message.from_user.id
+                username = message.from_user.username
+                first_name = message.from_user.first_name
+
+                users.append(User(user_id,username,first_name))
+
+                join_game()
+
+                bot.send_message(message.chat.id, "Ти в ігрі, друже!", reply_to_message_id=message.message_id)
+
+            elif not again:
+                bot.send_message(message.chat.id, "Ти вже в ігрі!", reply_to_message_id=message.message_id)
+
+        else:
+            bot.send_message(message.chat.id, f'Вітаю, {message.from_user.first_name}!')
+
+@bot.message_handler(commands=['locations'])
+def locations_list(message):
+    bot.send_message(message.chat.id, '\n'.join(locations))
+
+@bot.message_handler(commands=['game'])
+def start_the_game(message):
+    reply_markup = InlineKeyboardMarkup()
+
+    join_button = InlineKeyboardButton("Приєднатися до гри", callback_data='join_game',
+                                       url="https://t.me/newspygame_bot?start=join_game")
+    reply_markup.add(join_button)
+
+    msg1 = bot.send_message(
+        message.chat.id,
+        "Привіт! Я бот для гри Шпигун. Щоб приєднатися до гри, натисни кнопку нижче.",
+        reply_markup=reply_markup
+    )
+    messages.append(msg1)
+
+    game1.set_messages(msg1)
+
+def join_game():
+    if users:
+
+        reply_markup = InlineKeyboardMarkup()
+        join_button = InlineKeyboardButton("Приєднатися до гри", callback_data='join_game',
+                                           url="https://t.me/newspygame_bot?start=join_game")
+        reply_markup.add(join_button)
+
+        message_builder = "<b>Проводиться набір у гру!</b>\n\nЗареєстровані гравці:\n"
+        for user in users:
+            message_builder += f"{user.first_name}\n"
+        message_builder += f"Кількість гравців: {len(users)}"
+
+        prev_msg = game1.get_messages()
+
+        msg2 = bot.edit_message_text(
+            message_builder,
+            chat_id=prev_msg.chat.id,
+            message_id=prev_msg.message_id,
+            reply_markup=reply_markup,
+            parse_mode="HTML")
+
+        messages.append(msg2)
+        game1.set_messages(msg2)
+
+        times = time.time()
+
+        game1.set_reg_list(times)
+
+        _registrations.append(times)
+        registration_time()
+
+def registration_time():
+    if game1.get_reg_list() and (time.time() - game1.get_reg_list()) >= 15:
+        print("Час реєстрації минув. Починаємо гру!")
+        game1.set_reg_status(False)
+        prepearing()
+
+def check_registration():
+    while game1.get_reg_status():
+        registration_time()
+        time.sleep(1)
+
+registration_thread = threading.Thread(target=check_registration)
+registration_thread.start()
+
+def prepearing():
+    msg = game1.get_messages()
+    if not game1.get_reg_status():
+        bot.delete_message(msg.chat.id, msg.message_id)
+        msg3 = bot.send_message(msg.chat.id, 'ГРА ПОЧАЛАСЬ!')
+
+        global random_location
+        random_location = random.choice(locations)
+
+        # Надаємо ролі гравцям
+        assign_roles(random_location)
+
+        for player in players2:
+            if player.role == 'Spy':
+                bot.send_message(player.id,f"Ваша роль: Шпигун!")
+            if player.role == 'NotSpy':
+                bot.send_message(player.id,f"Ваша роль: Не шпигун.\nВаша локація: {random_location}!")
+
+        start_game_timer()
+        time.sleep(5)
+        bot.delete_message(msg3.chat.id, msg3.message_id)
 
 
-# 1) Створити абстрактний клас Printable який буде описувати абстрактний метод print()
-# 2) Створити класи Book та Magazine в кожного в конструкторі змінна name, та який наслідуются від класу Printable
-# 3) Створити клас Main в якому буде:
-# - змінна класу printable_list яка буде зберігати книжки та журнали
-# - метод add за допомогою якого можна додавати екземпляри класів в список і робити перевірку чи то що передають є класом Book або Magazine инакше ігрнорувати додавання
-# - метод show_all_magazines який буде виводити всі журнали викликаючи метод print абстрактного классу
-# - метод show_all_books який буде виводити всі книги викликаючи метод print абстрактного классу
+def assign_roles(random_location):
+    user_ids = [user.id for user in users]
 
-class Printable(ABC):
+    spy_id = random.choice(user_ids)
 
-    @abstractmethod
-    def print_(self):
-        pass
+    global spy_list
+    spy_list.append(spy_id)
 
-class Book(Printable):
-    def __init__(self,name):
-        self.name = name
+    # Присвоюємо ролі гравцям
+    for user in users:
+        if user.id == spy_id:
+            players2.append(Player(user.id, user.username, user.first_name, 'Spy', random_location))
 
-    def print_(self):
-        print( f'The book {self.name} is')
-
-class Magazine(Printable):
-    def __init__(self,name):
-        self.name = name
-
-    def print_(self):
-        print( f'The magazine {self.name} is')
+        else:
+            players2.append(Player(user.id,user.username,user.first_name,'NotSpy',random_location))
 
 
-# - змінна класу printable_list яка буде зберігати книжки та журнали
-# - метод add за допомогою якого можна додавати екземпляри класів в список і робити перевірку чи то що передають є класом
-# Book або Magazine инакше ігрнорувати додавання
-# - метод show_all_magazines який буде виводити всі журнали викликаючи метод print абстрактного классу
-# - метод show_all_books який буде виводити всі книги викликаючи метод print абстрактного классу
-class Main():
-    printable_list: list[Printable] = []
-    def __init__(self,name):
-        self.name = name
+@bot.message_handler()
+def echo(message):
+    print(
+        f"{message.chat.type} | {message.chat.title} | {message.chat.id} | {message.from_user.first_name} | {message.text}")
 
-    @classmethod
-    def add_(cls,item):
-        if isinstance(item,Printable):
-            cls.printable_list.append(item)
+    spy = None
+    if spy_list:
+        spy = spy_list[0]
 
-    @classmethod
-    def show_all_magazines(cls):
-        for magazine in cls.printable_list:
-            if isinstance(magazine,Magazine):
-               magazine.print_()
+    if message.from_user.id == spy:
+        player_location = message.text
+        correct_location = random_location
 
-    @classmethod
-    def show_all_books(cls):
-        for book in cls.printable_list:
-            if isinstance(book,Book):
-                book.print_()
+        if player_location == correct_location and player_location in locations:
+            msg = bot.send_message(message.chat.id,f'Spy win! The spy was {message.from_user.first_name}' )
+            clearing()
+            time.sleep(10)
+            bot.delete_message(message.chat.id, msg.message_id)
 
+        if player_location != correct_location and player_location in locations:
+            msg = bot.send_message(message.chat.id,f'Spy lost! The spy was {message.from_user.first_name}')
+            clearing()
+            time.sleep(10)
+            bot.delete_message(message.chat.id, msg.message_id)
 
-Main.add_(Book('Koob1'))
-Main.add_(Magazine('kekes1'))
-Main.add_(Book('Moob2'))
-Main.add_(Book('Kook3'))
-Main.add_(Magazine('kekesh2'))
+def start_game_timer():
+    global game_timer
+    game_timer = threading.Timer(20, end_game)
+    game_timer.start()
 
-Main.show_all_magazines()
-Main.show_all_books()
+def end_game():
+    print("Час гри минув!")
+    global game_ended
+    game_ended = True
+    bot.send_message(game1.get_messages().chat.id, "Час гри минув!")
+    clearing()
 
-import sqlite3
-sqlite_version = sqlite3.sqlite_version
-sqlite_version_info = sqlite3.sqlite_version_info
-threadsafety = sqlite3.threadsafety
-print([sqlite_version, sqlite_version_info, threadsafety])
-
-# Для Python 3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)] on win32:
-# ['3.43.1', (3, 43, 1), 3]
+bot.polling(none_stop=True)
