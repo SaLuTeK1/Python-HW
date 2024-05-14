@@ -33,30 +33,24 @@ locations = [
     "Школа"
 ]
 
-messages = []
-
-reg_started = True
-
-again = False
-
-game_ended = False
-
-_registrations = []
-
 random_location = ''
-
 game_timer = None
-
 spy_list = []
 users = []
 players2 = []
-games = []
 
 class User():
     def __init__(self,id,username,first_name):
         self.id = id
         self.username = username
         self.first_name = first_name
+        self.in_game = False
+
+    def set_in_game(self,in_game):
+        self.in_game = in_game
+
+    def get_in_game(self):
+        return self.in_game
 
 class Player(User):
     def __init__(self,id,username,first_name,role,location):
@@ -70,6 +64,12 @@ class Game():
         self.messages = None
         self.reg_status = reg_status
         self.reg_list = None
+
+    def get_status(self):
+        return self.status
+
+    def set_status(self, status):
+        self.status = status
 
     def get_messages(self):
         return self.messages
@@ -93,21 +93,19 @@ game1 = Game(status=True,reg_status=True)
 
 def clearing():
     print('clear')
-    global reg_started,players,messages,spy_list,game_ended,random_location,_registrations,again
-    players = {}
-    again = False
-    messages = []
+    global players2,spy_list,random_location,users,players2,game1,game_timer
+    players2 =[]
+    game1 = Game(status=True,reg_status=True)
     spy_list = []
-    game_ended = False
+    users = []
     random_location = ''
-    reg_started = True
-    _registrations = []
+    game_timer = None
 
 @bot.message_handler(commands=['start'])
 def connect_the_game(message):
     if message.chat.type == 'private':
         if 'join_game' in message.text.lower():
-            if message.from_user.id not in [player.id for player in players2] and not again:
+            if message.from_user.id not in [player.id for player in players2] and not [player.in_game for player in players2]:
                 user_id = message.from_user.id
                 username = message.from_user.username
                 first_name = message.from_user.first_name
@@ -118,7 +116,7 @@ def connect_the_game(message):
 
                 bot.send_message(message.chat.id, "Ти в ігрі, друже!", reply_to_message_id=message.message_id)
 
-            elif not again:
+            elif [player.in_game for player in players2]:
                 bot.send_message(message.chat.id, "Ти вже в ігрі!", reply_to_message_id=message.message_id)
 
         else:
@@ -126,10 +124,13 @@ def connect_the_game(message):
 
 @bot.message_handler(commands=['locations'])
 def locations_list(message):
+
     bot.send_message(message.chat.id, '\n'.join(locations))
 
 @bot.message_handler(commands=['game'])
 def start_the_game(message):
+    bot.delete_message(message.chat.id, message.message_id)
+
     reply_markup = InlineKeyboardMarkup()
 
     join_button = InlineKeyboardButton("Приєднатися до гри", callback_data='join_game',
@@ -141,7 +142,6 @@ def start_the_game(message):
         "Привіт! Я бот для гри Шпигун. Щоб приєднатися до гри, натисни кнопку нижче.",
         reply_markup=reply_markup
     )
-    messages.append(msg1)
 
     game1.set_messages(msg1)
 
@@ -167,14 +167,15 @@ def join_game():
             reply_markup=reply_markup,
             parse_mode="HTML")
 
-        messages.append(msg2)
         game1.set_messages(msg2)
 
         times = time.time()
 
         game1.set_reg_list(times)
 
-        _registrations.append(times)
+        registration_thread = threading.Thread(target=check_registration)
+        registration_thread.start()
+
         registration_time()
 
 def registration_time():
@@ -187,9 +188,6 @@ def check_registration():
     while game1.get_reg_status():
         registration_time()
         time.sleep(1)
-
-registration_thread = threading.Thread(target=check_registration)
-registration_thread.start()
 
 def prepearing():
     msg = game1.get_messages()
@@ -206,13 +204,15 @@ def prepearing():
         for player in players2:
             if player.role == 'Spy':
                 bot.send_message(player.id,f"Ваша роль: Шпигун!")
+                player.set_in_game(True)
             if player.role == 'NotSpy':
                 bot.send_message(player.id,f"Ваша роль: Не шпигун.\nВаша локація: {random_location}!")
+                player.set_in_game(True)
 
         start_game_timer()
+
         time.sleep(5)
         bot.delete_message(msg3.chat.id, msg3.message_id)
-
 
 def assign_roles(random_location):
     user_ids = [user.id for user in users]
@@ -230,7 +230,6 @@ def assign_roles(random_location):
         else:
             players2.append(Player(user.id,user.username,user.first_name,'NotSpy',random_location))
 
-
 @bot.message_handler()
 def echo(message):
     print(
@@ -243,29 +242,40 @@ def echo(message):
     if message.from_user.id == spy:
         player_location = message.text
         correct_location = random_location
+        global starter
 
         if player_location == correct_location and player_location in locations:
             msg = bot.send_message(message.chat.id,f'Spy win! The spy was {message.from_user.first_name}' )
-            clearing()
+            game1.set_status(False)
+            start_game_timer()
             time.sleep(10)
             bot.delete_message(message.chat.id, msg.message_id)
 
         if player_location != correct_location and player_location in locations:
             msg = bot.send_message(message.chat.id,f'Spy lost! The spy was {message.from_user.first_name}')
-            clearing()
+            game1.set_status(False)
+            start_game_timer()
             time.sleep(10)
             bot.delete_message(message.chat.id, msg.message_id)
 
 def start_game_timer():
+    status = game1.get_status()
     global game_timer
-    game_timer = threading.Timer(20, end_game)
-    game_timer.start()
+
+    if status == True:
+        game_timer = threading.Timer(40, end_game)
+        game_timer.start()
+
+    elif status == False:
+        if game_timer is not None:
+            game_timer.cancel()
+            clearing()
 
 def end_game():
-    print("Час гри минув!")
-    global game_ended
-    game_ended = True
-    bot.send_message(game1.get_messages().chat.id, "Час гри минув!")
-    clearing()
+    print(game1.get_status())
+    if game1.get_status():
+        print("Час гри минув!")
+        bot.send_message(game1.get_messages().chat.id, "Час гри минув!")
+        clearing()
 
 bot.polling(none_stop=True)
